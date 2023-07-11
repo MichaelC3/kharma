@@ -606,7 +606,7 @@ void BG_Injection(MeshBlockData<Real> *rc, IndexDomain domain, bool coarse)
     const IndexRange kb = bounds.GetBoundsK(domain);
 
     pmb->par_for("magnetic_injection", kb.s, kb.e, jb.s, jb.e, ib.s, ib.e, 
-        KOKKOS_LAMBDA (const int &mu, const int &k, const int &j, const int &i, GReal &dt) {
+        KOKKOS_LAMBDA (const int &mu, const int &k, const int &j, const int &i) {
             GReal Xnative[GR_DIM], Xembed[GR_DIM];
             GReal cthwid = .1;
             GReal rate = 0.05; 
@@ -617,7 +617,7 @@ void BG_Injection(MeshBlockData<Real> *rc, IndexDomain domain, bool coarse)
             G.coord_embed(k, j, i, Loci::center, Xembed);
             GReal r = Xembed[1];
             GReal th = Xembed[2];
-            B_P(mu, k, j, i) += (exp(th*th*fac)-exp((M_PI-th)*(M_PI-th)*fac))*rate*dt*bchar/G.gdet(Loci::center, j, i);
+            B_P(mu, k, j, i) += (exp(th*th*fac)-exp((M_PI-th)*(M_PI-th)*fac))*rate*bchar/G.gdet(Loci::center, j, i);
             }  
         ); 
 }
