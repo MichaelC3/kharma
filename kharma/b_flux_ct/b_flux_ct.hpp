@@ -126,6 +126,10 @@ inline TaskStatus PostStepDiagnostics(const SimTime& tm, MeshData<Real> *md)
  */
 void FillOutput(MeshBlock *pmb, ParameterInput *pin);
 /**
+* Magnetic flux injection for Blandford-Globus model
+*/
+void BG_Injection(MeshBlockData<Real> *rc, IndexDomain domain, bool coarse=false);
+/**
  * Fill field "name" with divB
  */
 void CalcDivB(MeshData<Real> *md, std::string divb_field_name="divB");
