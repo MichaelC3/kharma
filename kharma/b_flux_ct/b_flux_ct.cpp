@@ -592,4 +592,34 @@ void FillOutput(MeshBlock *pmb, ParameterInput *pin)
     );
 }
 
+void BG_Injection(MeshBlockData<Real> *rc, IndexDomain domain, bool coarse) 
+{
+    auto pmb = rc->GetBlockPointer();
+
+    auto B_P = rc->PackVariables(std::vector<std::string>{"prims.B"});
+    
+    GRCoordinates G = pmb->coords;
+
+    auto bounds = coarse ? pmb->c_cellbounds : pmb->cellbounds; 
+    const IndexRange ib = bounds.GetBoundsI(domain);
+    const IndexRange jb = bounds.GetBoundsJ(domain);
+    const IndexRange kb = bounds.GetBoundsK(domain);
+
+    pmb->par_for("magnetic_injection", kb.s, kb.e, jb.s, jb.e, ib.s, ib.e, 
+        KOKKOS_LAMBDA (const int &mu, const int &k, const int &j, const int &i, GReal &dt) {
+            GReal Xnative[GR_DIM], Xembed[GR_DIM];
+            GReal cthwid = .1;
+            GReal rate = 0.05; 
+            GReal bchar = 1.;
+            GReal fac = -2.76/(cthwid*cthwid);
+            GReal add = 0;
+            G.coord(k, j, i, Loci::center, Xnative);
+            G.coord_embed(k, j, i, Loci::center, Xembed);
+            GReal r = Xembed[1];
+            GReal th = Xembed[2];
+            B_P(mu, k, j, i) += (exp(th*th*fac)-exp((M_PI-th)*(M_PI-th)*fac))*rate*dt*bchar/G.gdet(Loci::center, j, i);
+            }  
+        ); 
+}
+
 } // namespace B_FluxCT
