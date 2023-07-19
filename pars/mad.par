@@ -9,12 +9,12 @@ problem_id = torus
 <parthenon/mesh>
 refinement = none
 numlevel = 1
-nx1 = 256
+nx1 = 288
 nx2 = 128
 nx3 = 128
 
 <parthenon/meshblock>
-nx1 = 128
+nx1 = 144
 nx2 = 128
 nx3 = 64
 
@@ -50,6 +50,8 @@ u_jitter = 0.1
 <b_field>
 type = mad
 beta_min = 100.
+BG_on = true
+bg_rate = 5.
 
 <floors>
 rho_min_geom = 1e-6
