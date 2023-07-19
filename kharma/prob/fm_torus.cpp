@@ -73,6 +73,17 @@ TaskStatus InitializeFMTorus(std::shared_ptr<MeshBlockData<Real>>& rc, Parameter
     const auto& G = pmb->coords;
     const GReal a = G.coords.get_a();
 
+    // Blandford-Globus injection
+    // B-G Model 
+    const bool do_BG = pmb->packages.Get("B_FluxCT")->Param<bool>("do_BG");
+    if (do_BG) {
+        GReal bg_rate = pin->GetOrAddReal("b_field", "bg_rate", 5.0);
+
+        pmb->packages.Get("B_FluxCT")->AllParams().Add("bg_rate", bg_rate);
+        auto bpkg = pmb->packages.Get<KHARMAPackage>("B_FluxCT");
+        bpkg->BlockApplyPrimSource = BG_Injection;
+    }
+    
     // Fishbone-Moncrief parameters
     Real l = lfish_calc(a, rmax);
 
