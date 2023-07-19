@@ -259,3 +259,42 @@ TaskStatus PerturbU(std::shared_ptr<MeshBlockData<Real>>& rc, ParameterInput *pi
 
     return TaskStatus::complete;
 }
+
+
+void BG_Injection(MeshBlockData<Real> *rc) 
+{
+    auto pmb = rc->GetBlockPointer();
+
+    auto B_P = rc->PackVariables(std::vector<std::string>{"prims.B"});
+    
+    PackIndexMap prims_map;
+    auto P_mbase = GRMHD::PackHDPrims(rc, prims_map);
+
+    GRCoordinates G = pmb->coords;
+
+    IndexDomain domain = IndexDomain::interior;
+    auto ib = rc->GetBoundsI(domain);
+    auto jb = rc->GetBoundsJ(domain);
+    auto kb = rc->GetBoundsK(domain);
+    auto vec = IndexRange{0, P_mbase.GetDim(5)-1};
+
+
+    const Real rate = pmb->packages.Get("B_FluxCT")->Param<Real>("bg_rate");
+    const Real dt = pmb->packages.Get("Globals")->Param<Real>("dt_last");
+
+    pmb->par_for("magnetic_injection", kb.s, kb.e, jb.s, jb.e, ib.s, ib.e, 
+        KOKKOS_LAMBDA (const int &k, const int &j, const int &i) {
+            GReal Xnative[GR_DIM], Xembed[GR_DIM];
+            GReal cthwid = .1;
+            GReal bchar = 1.;
+            GReal fac = -2.76/(cthwid*cthwid);
+            GReal add = 0.;
+            G.coord(k, j, i, Loci::center, Xnative);
+            G.coord_embed(k, j, i, Loci::center, Xembed);
+            GReal r = Xembed[1];
+            GReal th = Xembed[2];
+            B_P(V1, k, j, i) += (exp(th*th*fac)-exp((M_PI-th)*(M_PI-th)*fac))*rate*dt*bchar/G.gdet(Loci::center, j, i);
+            }  
+        ); 
+}
+
