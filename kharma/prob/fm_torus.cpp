@@ -277,7 +277,7 @@ void BG_Injection(MeshBlockData<Real> *rc)
     auto pmb = rc->GetBlockPointer();
 
     PackIndexMap prims_map;
-    auto P = GRMHD::PackHDPrims(rc, prims_map);
+    auto P = GRMHD::PackMHDPrims(rc, prims_map);
     const VarMap m_p(prims_map, false);
 
     GRCoordinates G = pmb->coords;
