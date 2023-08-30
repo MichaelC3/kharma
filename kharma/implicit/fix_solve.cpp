@@ -1,5 +1,5 @@
 /* 
- *  File: fixup.cpp
+ *  File: fix_solve.cpp
  *  
  *  BSD 3-Clause License
  *  
@@ -34,6 +34,7 @@
 
 #include "implicit.hpp"
 
+#include "domain.hpp"
 #include "floors.hpp"
 #include "flux_functions.hpp"
 
@@ -85,7 +86,7 @@ TaskStatus Implicit::FixSolve(MeshBlockData<Real> *mbd) {
                 sum_x(ip, k, j, i) = 0.;
             }
             // Fix only bad zones
-            if ((solve_fail(k, j, i)) == SolverStatus::fail) {
+            if (failed(solve_fail(k, j, i))) {
                 //printf("Fixing zone %d %d %d!\n", i, j, k);
                 double wsum = 0., wsum_x = 0.;
                 // double sum[nfvar] = {0.}, sum_x[nfvar] = {0.};
@@ -95,13 +96,13 @@ TaskStatus Implicit::FixSolve(MeshBlockData<Real> *mbd) {
                         for (int l = -1; l <= 1; l++) {
                             int ii = i + l, jj = j + m, kk = k + n;
                             // If we haven't overstepped array bounds...
-                            if (inside(kk, jj, ii, kb, jb, ib)) {
+                            if (KDomain::inside(kk, jj, ii, kb, jb, ib)) {
                                 // Weight by distance
                                 // TODO abs(l) == l*l always?
                                 double w = 1./(m::abs(l) + m::abs(m) + m::abs(n) + 1);
 
                                 // Count only the good cells, if we can
-                                if ((solve_fail(kk, jj, ii)) != SolverStatus::fail) {
+                                if (!failed(solve_fail(kk, jj, ii))) {
                                     // Weight by distance.  Note interpolated "fixed" cells stay flagged
                                     wsum += w;
                                     FLOOP sum(ip, k, j, i) += w * P(ip, kk, jj, ii);
@@ -117,7 +118,7 @@ TaskStatus Implicit::FixSolve(MeshBlockData<Real> *mbd) {
                 if(wsum < 1.e-10) {
                     // TODO probably should crash here. Or average anyway?
 #ifndef KOKKOS_ENABLE_SYCL
-                    if (flag_verbose >= 3 && inside(k, j, i, kb_b, jb_b, ib_b)) // If an interior zone...
+                    if (flag_verbose >= 3 && KDomain::inside(k, j, i, kb_b, jb_b, ib_b)) // If an interior zone...
                         printf("No neighbors were available at %d %d %d!\n", i, j, k);
 #endif // TODO SYCL has cout
                 } else {
@@ -139,7 +140,7 @@ TaskStatus Implicit::FixSolve(MeshBlockData<Real> *mbd) {
 
     pmb->par_for("fix_solver_failures_PtoU", kb.s, kb.e, jb.s, jb.e, ib.s, ib.e,
         KOKKOS_LAMBDA (const int& k, const int& j, const int& i) {
-            if (solve_fail(k, j, i) == SolverStatus::fail)
+            if (failed(solve_fail(k, j, i)))
                 Flux::p_to_u(G, P_all, m_p, emhd_params, gam, k, j, i, U_all, m_u);
         }
     );

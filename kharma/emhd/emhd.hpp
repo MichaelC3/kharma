@@ -39,6 +39,12 @@
 
 using namespace parthenon;
 
+// Always disabled when implicit solver is disabled
+// TODO separate flag, also error properly at runtime
+#if DISABLE_IMPLICIT
+#define DISABLE_EMHD 1
+#endif
+
 /**
  * This physics package implements the Extended GRMHD "EGRMHD" scheme of Chandra et al. 2015,
  * First implemented in GRIM, of Chandra et al. 2017.
@@ -109,6 +115,48 @@ inline EMHD_parameters GetEMHDParameters(Packages_t& packages)
     }
     return emhd_params_tmp;
 }
+
+/**
+ * Add EGRMHD explicit source terms: anything which can be calculated once
+ * and added to the general dU/dt term along with e.g. GRMHD source, wind, etc
+ */
+TaskStatus AddSource(MeshData<Real> *md, MeshData<Real> *mdudt);
+
+/**
+ * Set q and dP to sensible starting values if they are not initialized by the problem.
+ * Currently a no-op as sensible values are zeros.
+ */
+void InitEMHDVariables(std::shared_ptr<MeshBlockData<Real>>& rc, ParameterInput *pin);
+
+#if DISABLE_EMHD
+
+template<typename Local>
+KOKKOS_INLINE_FUNCTION void set_parameters(const GRCoordinates& G, const Local& P, const VarMap& m_p,
+                                           const EMHD_parameters& emhd_params, const Real& gam,
+                                           const int& j, const int& i,
+                                           Real& tau, Real& chi_e, Real& nu_e) {}
+
+KOKKOS_INLINE_FUNCTION void set_parameters(const GRCoordinates& G, const VariablePack<Real>& P, const VarMap& m_p,
+                                           const EMHD_parameters& emhd_params, const Real& gam,
+                                           const int& k, const int& j, const int& i,
+                                           Real& tau, Real& chi_e, Real& nu_e) {}
+
+KOKKOS_INLINE_FUNCTION void set_parameters_init(const GRCoordinates& G, const Real& rho, const Real& u,
+                                           const EMHD_parameters& emhd_params, const Real& gam,
+                                           const int& k, const int& j, const int& i,
+                                           Real& tau, Real& chi_e, Real& nu_e) {}
+
+KOKKOS_INLINE_FUNCTION void calc_tensor(const Real& rho, const Real& u, const Real& pgas,
+                                        const EMHD::EMHD_parameters& emhd_params, 
+                                        const Real& q, const Real& dP,
+                                        const FourVectors& D, const int& dir,
+                                        Real emhd[GR_DIM]) {}
+
+KOKKOS_INLINE_FUNCTION void convert_prims_to_q_dP(const Real& q_tilde, const Real& dP_tilde,
+                                        const Real& rho, const Real& Theta, const Real& cs2, 
+                                        const EMHD_parameters& emhd_params, Real& q, Real& dP) {}
+
+#else
 
 /**
  * Set chi, nu, tau. Problem dependent
@@ -285,5 +333,6 @@ KOKKOS_INLINE_FUNCTION void convert_prims_to_q_dP(const Real& q_tilde, const Rea
         dP = 0.;
     }
 }
+#endif
 
 } // namespace EMHD

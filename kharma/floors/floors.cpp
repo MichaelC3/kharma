@@ -34,7 +34,6 @@
 #include "floors.hpp"
 #include "floors_functions.hpp"
 
-#include "debug.hpp"
 #include "grmhd.hpp"
 #include "grmhd_functions.hpp"
 #include "pack.hpp"
@@ -43,7 +42,7 @@
 
 int CountFFlags(MeshData<Real> *md)
 {
-    return Reductions::CountFlags(md, "fflag", FFlag::flag_names, IndexDomain::interior, 0, true);
+    return Reductions::CountFlags(md, "fflag", FFlag::flag_names, IndexDomain::interior, true)[0];
 }
 
 std::shared_ptr<KHARMAPackage> Floors::Initialize(ParameterInput *pin, std::shared_ptr<Packages_t>& packages)
@@ -202,6 +201,9 @@ TaskStatus Floors::ApplyInitialFloors(ParameterInput *pin, MeshBlockData<Real> *
 
     const EMHD::EMHD_parameters& emhd_params = EMHD::GetEMHDParameters(pmb->packages);
 
+    fprintf(stderr, "%d %d %d %d %d\n", m_p.RHO, m_p.UU, m_p.U1, m_p.U2, m_p.U3);
+    fprintf(stderr, "%d %d %d %d %d\n", m_u.RHO, m_u.UU, m_u.U1, m_u.U2, m_u.U3);
+
     // Apply floors over the same zones we just updated with UtoP
     // This selects the entire domain, but we then require pflag >= 0,
     // which keeps us from covering completely uninitialized zones
@@ -209,7 +211,7 @@ TaskStatus Floors::ApplyInitialFloors(ParameterInput *pin, MeshBlockData<Real> *
     const IndexRange ib = mbd->GetBoundsI(domain);
     const IndexRange jb = mbd->GetBoundsJ(domain);
     const IndexRange kb = mbd->GetBoundsK(domain);
-    pmb->par_for("apply_floors", kb.s, kb.e, jb.s, jb.e, ib.s, ib.e,
+    pmb->par_for("apply_initial_floors", kb.s, kb.e, jb.s, jb.e, ib.s, ib.e,
         KOKKOS_LAMBDA (const int &k, const int &j, const int &i) {
             apply_floors(G, P, m_p, gam, emhd_params, k, j, i, floors, U, m_u);
             apply_ceilings(G, P, m_p, gam, k, j, i, floors, U, m_u);
@@ -222,7 +224,7 @@ TaskStatus Floors::ApplyInitialFloors(ParameterInput *pin, MeshBlockData<Real> *
 
 TaskStatus Floors::ApplyGRMHDFloors(MeshBlockData<Real> *mbd, IndexDomain domain)
 {
-    auto pmb                 = mbd->GetBlockPointer();
+    auto pmb = mbd->GetBlockPointer();
 
     PackIndexMap prims_map, cons_map;
     auto P = mbd->PackVariables({Metadata::GetUserFlag("Primitive")}, prims_map);
@@ -283,6 +285,9 @@ TaskStatus Floors::ApplyGRMHDFloors(MeshBlockData<Real> *mbd, IndexDomain domain
         }
     );
 
+    //if (flag_verbose)
+    //Reductions::StartFlagReduce(md, "fflag", FFlag::flag_names, IndexDomain::interior, true, 0);
+
     return TaskStatus::complete;
 }
 
@@ -294,9 +299,15 @@ TaskStatus Floors::PostStepDiagnostics(const SimTime& tm, MeshData<Real> *md)
     const auto& pars = pmesh->packages.Get("Globals")->AllParams();
     const int flag_verbose = pars.Get<int>("flag_verbose");
 
-    // Debugging/diagnostic info about floor and inversion flags
-    if (flag_verbose >= 1) {
-        Reductions::CountFlags(md, "fflag", FFlag::flag_names, IndexDomain::interior, flag_verbose, true);
+    // Debugging/diagnostic info about floor flags
+    if (flag_verbose > 0) {
+        // TODO this should move to ApplyGRMHDFloors when everything goes MeshData
+        Reductions::StartFlagReduce(md, "fflag", FFlag::flag_names, IndexDomain::interior, true, 0);
+        // Debugging/diagnostic info about floor and inversion flags
+        Reductions::CheckFlagReduceAndPrintHits(md, "fflag", FFlag::flag_names, IndexDomain::interior, true, 0);
     }
+
+    // Anything else (energy conservation? Added material stats?)
+
     return TaskStatus::complete;
 }

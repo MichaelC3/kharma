@@ -99,7 +99,7 @@ std::shared_ptr<KHARMAPackage> Initialize(ParameterInput *pin, std::shared_ptr<P
     params.Add("do_BG", do_BG);
 
     // FIELDS
-
+    // Vector size: 3x[grid shape]
     std::vector<int> s_vector({NVEC});
 
     // Mark if we're evolving implicitly
@@ -142,6 +142,7 @@ std::shared_ptr<KHARMAPackage> Initialize(ParameterInput *pin, std::shared_ptr<P
     // The definition of MaxDivB we care about actually changes per-transport,
     // so calculating it is handled by the transport package
     // We'd only ever need to declare or calculate divB for output (getting the max is independent)
+
     if (KHARMA::FieldIsOutput(pin, "divB")) {
         pkg->BlockUserWorkBeforeOutput = B_FluxCT::FillOutput;
         m = Metadata({Metadata::Real, Metadata::Cell, Metadata::Derived, Metadata::OneCopy});
@@ -277,14 +278,14 @@ void FluxCT(MeshData<Real> *md)
     // Calculate emf around each face
     pmb0->par_for("flux_ct_emf", block.s, block.e, kl.s, kl.e, jl.s, jl.e, il.s, il.e,
         KOKKOS_LAMBDA (const int& b, const int &k, const int &j, const int &i) {
-            emf_pack(b, V3, k, j, i) =  0.25 * (B_F(b).flux(X1DIR, V2, k, j, i) + B_F(b).flux(X1DIR, V2, k, j-1, i) -
-                                        B_F(b).flux(X2DIR, V1, k, j, i) - B_F(b).flux(X2DIR, V1, k, j, i-1));
             if (ndim > 2) {
-                emf_pack(b, V2, k, j, i) = -0.25 * (B_F(b).flux(X1DIR, V3, k, j, i) + B_F(b).flux(X1DIR, V3, k-1, j, i) -
-                                            B_F(b).flux(X3DIR, V1, k, j, i) - B_F(b).flux(X3DIR, V1, k, j, i-1));
                 emf_pack(b, V1, k, j, i) =  0.25 * (B_F(b).flux(X2DIR, V3, k, j, i) + B_F(b).flux(X2DIR, V3, k-1, j, i) -
                                             B_F(b).flux(X3DIR, V2, k, j, i) - B_F(b).flux(X3DIR, V2, k, j-1, i));
+                emf_pack(b, V2, k, j, i) = 0.25 * (B_F(b).flux(X3DIR, V1, k, j, i) + B_F(b).flux(X3DIR, V1, k, j, i-1) -
+                                            B_F(b).flux(X1DIR, V3, k, j, i) - B_F(b).flux(X1DIR, V3, k-1, j, i));
             }
+            emf_pack(b, V3, k, j, i) =  0.25 * (B_F(b).flux(X1DIR, V2, k, j, i) + B_F(b).flux(X1DIR, V2, k, j-1, i) -
+                                        B_F(b).flux(X2DIR, V1, k, j, i) - B_F(b).flux(X2DIR, V1, k, j, i-1));
         }
     );
 
@@ -333,13 +334,13 @@ void FixBoundaryFlux(MeshData<Real> *md, IndexDomain domain, bool coarse)
 
     // Imagine a corner of the domain, with ghost and physical zones
     // as below, denoted w/'g' and 'p' respectively.
-    // 
+    //    ...
     // g | p | p
-    //-----------
-    // g | p | p
-    //xxx--------
+    //----------- 1
+    // g | p | p ...
+    //xxx-------- 0
     // g | g | g
-    // 
+    //-1   0   1
     // The flux through 'x' is not important for updating a physical zone,
     // as it does not border any.  However, FluxCT considers it when updating
     // nearby fluxes, two of which affect physical zones.
@@ -481,7 +482,8 @@ double MaxDivB(MeshData<Real> *md)
     const IndexRange kb = IndexRange{kbl.s, kbl.e + (ndim > 2)};
     const IndexRange block = IndexRange{0, B_U.GetDim(5)-1};
 
-    // TODO Keep zone of max!  Also applies to ctop.
+    // TODO Keep zone of max! See timestep calc
+    // Will need to translate them back to KS to make them useful though
 
     // This is one kernel call per block, because each block will have different bounds.
     // Could consolidate at the cost of lots of bounds checking.
@@ -507,13 +509,15 @@ double MaxDivB(MeshData<Real> *md)
     return max_divb;
 }
 
-double GlobalMaxDivB(MeshData<Real> *md)
+double GlobalMaxDivB(MeshData<Real> *md, bool all_reduce)
 {
-    static AllReduce<Real> max_divb;
-    max_divb.val = MaxDivB(md);
-    max_divb.StartReduce(MPI_MAX);
-    while (max_divb.CheckReduce() == TaskStatus::incomplete);
-    return max_divb.val;
+    if (all_reduce) {
+        Reductions::StartToAll<Real>(md, 2, MaxDivB(md), MPI_MAX);
+        return Reductions::CheckOnAll<Real>(md, 2);
+    } else {
+        Reductions::Start<Real>(md, 2, MaxDivB(md), MPI_MAX);
+        return Reductions::Check<Real>(md, 2);
+    }
 }
 
 TaskStatus PrintGlobalMaxDivB(MeshData<Real> *md, bool kill_on_large_divb)

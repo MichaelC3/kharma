@@ -38,6 +38,7 @@
 
 #include "boundaries.hpp"
 #include "decs.hpp"
+#include "kharma.hpp"
 #include "kharma_driver.hpp"
 #include "grmhd.hpp"
 #include "kharma.hpp"
@@ -103,7 +104,8 @@ std::shared_ptr<KHARMAPackage> B_Cleanup::Initialize(ParameterInput *pin, std::s
     // RHS.  Must not just be "divB" as that field does not sync boundaries
     pkg->AddParam<std::string>("rhs_name", "divB_RHS");
     // Construct a solver. We don't need the template parameter, so we use 'int'
-    BiCGStabSolver<int> solver(pkg.get(), rel_tolerance, SparseMatrixAccessor(), {}, {Metadata::GetUserFlag("B_Cleanup")});
+    // TODO TODO
+    BiCGStabSolver<int> solver(pkg.get(), rel_tolerance, SparseMatrixAccessor(), {}); //, {Metadata::GetUserFlag("B_Cleanup")});
     // Set callback
     solver.user_MatVec = B_Cleanup::CornerLaplacian;
 
@@ -216,7 +218,7 @@ TaskStatus B_Cleanup::CleanupDivergence(std::shared_ptr<MeshData<Real>>& md)
     }
 
     // Calculate/print inital max divB exactly as we would during run
-    const double divb_start = B_FluxCT::GlobalMaxDivB(md.get());
+    const double divb_start = B_FluxCT::GlobalMaxDivB(md.get(), true);
     if (divb_start < rel_tolerance && !always_solve) {
         // If divB is "pretty good" and we allow not solving...
         if (MPIRank0())
@@ -235,22 +237,8 @@ TaskStatus B_Cleanup::CleanupDivergence(std::shared_ptr<MeshData<Real>>& md)
     KHARMADriver::SyncAllBounds(md);
 
     // Add a solver container and associated MeshData
-    for (auto& pmb : pmesh->block_list) {
-        auto &base = pmb->meshblock_data.Get();
-        pmb->meshblock_data.Add("solve", base);
-    }
-    // The "solve" container really only needs the RHS, the solution, and the scratch array dB
-    // This does not affect the main container, but saves a *lot* of time not syncing
-    // static variables.
-    // There's no MeshData-wide 'Remove' so we go block-by-block
-    for (auto& pmb : pmesh->block_list) {
-        auto rc_s = pmb->meshblock_data.Get("solve");
-        auto vars = rc_s->GetVariablesByFlag({Metadata::GetUserFlag("MHD")}).vars();
-        for (auto var : vars) {
-            rc_s->Remove(var->label());
-        }
-    }
-    auto &msolve = pmesh->mesh_data.GetOrAdd("solve", 0);
+    std::vector<std::string> names = KHARMA::GetVariableNames(&pmesh->packages, Metadata::GetUserFlag("B_Cleanup"));
+    auto &msolve = pmesh->mesh_data.Add("solve", names);
 
     // Create a TaskCollection of just the solve,
     // execute it to perform BiCGStab iteration
@@ -281,24 +269,6 @@ TaskStatus B_Cleanup::CleanupDivergence(std::shared_ptr<MeshData<Real>>& md)
         std::cout << "Magnetic field divergence after cleanup: " << divb_end << std::endl;
     }
 
-    return TaskStatus::complete;
-}
-
-TaskStatus B_Cleanup::RemoveExtraFields(BlockList_t &blocks)
-{
-    // If we aren't needed to clean anything...
-    if (! (blocks[0]->packages.Get("B_Cleanup")->Param<int>("cleanup_interval") > 0)) {
-        // remove the internal BiCGStab variables by name,
-        // to prevent them weighing down MPI exchanges
-        // TODO anything FillGhost & not Conserved or Primitive
-        for (auto& pmb : blocks) {
-            auto rc_s = pmb->meshblock_data.Get();
-            for (auto varlabel : {"pk0", "res0", "temp0", "divB_RHS", "p"}) {
-                if (rc_s->HasCellVariable(varlabel))
-                    rc_s->Remove(varlabel);
-            }
-        }
-    }
     return TaskStatus::complete;
 }
 

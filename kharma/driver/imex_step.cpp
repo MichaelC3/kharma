@@ -44,7 +44,6 @@
 #include "wind.hpp"
 // Other headers
 #include "boundaries.hpp"
-#include "debug.hpp"
 #include "flux.hpp"
 #include "resize_restart.hpp"
 #include "implicit.hpp"
@@ -70,39 +69,32 @@ TaskCollection KHARMADriver::MakeImExTaskCollection(BlockList_t &blocks, int sta
     const bool use_jcon = pkgs.count("Current");
     const bool use_linesearch = (use_implicit) ? pkgs.at("Implicit")->Param<bool>("linesearch") : false;
 
-    // If we cleaned up, this added other fields marked FillDerived
-    // Remove them before we allocate the space
-    if (use_b_cleanup) {
-        B_Cleanup::RemoveExtraFields(blocks);
-    }
-
-    // Allocate the fluid states ("containers") we need for each block
-    for (auto& pmb : blocks) {
-        // first make other useful containers
-        auto &base = pmb->meshblock_data.Get();
-        if (stage == 1) {
-            pmb->meshblock_data.Add("dUdt", base);
-            for (int i = 1; i < integrator->nstages; i++)
-                pmb->meshblock_data.Add(integrator->stage_name[i], base);
-            
-            if (use_jcon) {
-                // At the end of the step, updating "mbd_sub_step_final" updates the base
-                // So we have to keep a copy at the beginning to calculate jcon
-                pmb->meshblock_data.Add("preserve", base);
-            }
-
-            if (use_implicit) {
-                // When solving, we need a temporary copy with any explicit updates,
-                // but not overwriting the beginning- or mid-step values
-                pmb->meshblock_data.Add("solver", base);
-                if (use_linesearch) {
-                    // Need an additional state for linesearch
-                    pmb->meshblock_data.Add("linesearch", base);
-                }
+    // Allocate/copy the things we need
+    // TODO these can now be reduced by including the var lists/flags which actually need to be allocated
+    // TODO except the Copy they can be run on step 1 only
+    if (stage == 1) {
+        auto &base = pmesh->mesh_data.Get();
+        // Fluxes
+        pmesh->mesh_data.Add("dUdt");
+        for (int i = 1; i < integrator->nstages; i++)
+            pmesh->mesh_data.Add(integrator->stage_name[i]);
+        // Preserve state for time derivatives if we need to output current
+        if (use_jcon) {
+            pmesh->mesh_data.Add("preserve");
+            // Above only copies on allocate -- ensure we copy every step
+            Copy<MeshData<Real>>({}, base.get(), pmesh->mesh_data.Get("preserve").get());
+        }
+        if (use_implicit) {
+            // When solving, we need a temporary copy with any explicit updates,
+            // but not overwriting the beginning- or mid-step values
+            pmesh->mesh_data.Add("solver");
+            if (use_linesearch) {
+                // Need an additional state for linesearch
+                pmesh->mesh_data.Add("linesearch");
             }
         }
     }
-
+    
     // Big synchronous region: get & apply fluxes to advance the fluid state
     // num_partitions is nearly always 1
     const int num_partitions = pmesh->DefaultNumPartitions();
@@ -126,11 +118,10 @@ TaskCollection KHARMADriver::MakeImExTaskCollection(BlockList_t &blocks, int sta
         std::shared_ptr<MeshData<Real>> &md_solver = (use_implicit) ? pmesh->mesh_data.GetOrAdd("solver", i) : md_sub_step_final;
 
         // Start receiving flux corrections and ghost cells
-        namespace cb = parthenon::cell_centered_bvars;
-        auto t_start_recv_bound = tl.AddTask(t_none, cb::StartReceiveBoundBufs<parthenon::BoundaryType::any>, md_sub_step_final);
+        auto t_start_recv_bound = tl.AddTask(t_none, parthenon::StartReceiveBoundBufs<parthenon::BoundaryType::any>, md_sub_step_final);
         auto t_start_recv_flux = t_start_recv_bound;
         if (pmesh->multilevel)
-            t_start_recv_flux = tl.AddTask(t_none, cb::StartReceiveFluxCorrections, md_sub_step_init);
+            t_start_recv_flux = tl.AddTask(t_none, parthenon::StartReceiveFluxCorrections, md_sub_step_init);
         
         // Calculate the flux of each variable through each face
         // This reconstructs the primitives (P) at faces and uses them to calculate fluxes
@@ -141,9 +132,9 @@ TaskCollection KHARMADriver::MakeImExTaskCollection(BlockList_t &blocks, int sta
         // If we're in AMR, correct fluxes from neighbors
         auto t_flux_bounds = t_fluxes;
         if (pmesh->multilevel) {
-            tl.AddTask(t_fluxes, cb::LoadAndSendFluxCorrections, md_sub_step_init);
-            auto t_recv_flux = tl.AddTask(t_fluxes, cb::ReceiveFluxCorrections, md_sub_step_init);
-            t_flux_bounds = tl.AddTask(t_recv_flux, cb::SetFluxCorrections, md_sub_step_init);
+            tl.AddTask(t_fluxes, parthenon::LoadAndSendFluxCorrections, md_sub_step_init);
+            auto t_recv_flux = tl.AddTask(t_fluxes, parthenon::ReceiveFluxCorrections, md_sub_step_init);
+            t_flux_bounds = tl.AddTask(t_recv_flux, parthenon::SetFluxCorrections, md_sub_step_init);
         }
 
         // Any package modifications to the fluxes.  e.g.:
@@ -180,7 +171,7 @@ TaskCollection KHARMADriver::MakeImExTaskCollection(BlockList_t &blocks, int sta
         // If evolving GRMHD explicitly, UtoP needs a guess in order to converge, so we copy in md_sub_step_init
         auto t_copy_prims = t_none;
         if (!pkgs.at("GRMHD")->Param<bool>("implicit")) {
-            t_copy_prims = tl.AddTask(t_none, Copy, std::vector<MetadataFlag>({Metadata::GetUserFlag("HD"), Metadata::GetUserFlag("Primitive")}),
+            t_copy_prims = tl.AddTask(t_none, Copy<MeshData<Real>>, std::vector<MetadataFlag>({Metadata::GetUserFlag("HD"), Metadata::GetUserFlag("Primitive")}),
                                       md_sub_step_init.get(), md_solver.get());
         }
 
@@ -198,7 +189,7 @@ TaskCollection KHARMADriver::MakeImExTaskCollection(BlockList_t &blocks, int sta
 
             // Copy the current state of any implicitly-evolved vars (at least the prims) in as a guess.
             // This sets md_solver = md_sub_step_init
-            auto t_copy_guess = tl.AddTask(t_sources, Copy, std::vector<MetadataFlag>({Metadata::GetUserFlag("Implicit")}),
+            auto t_copy_guess = tl.AddTask(t_sources, Copy<MeshData<Real>>, std::vector<MetadataFlag>({Metadata::GetUserFlag("Implicit")}),
                                         md_sub_step_init.get(), md_solver.get());
 
             auto t_guess_ready = t_explicit | t_copy_guess;
@@ -208,7 +199,7 @@ TaskCollection KHARMADriver::MakeImExTaskCollection(BlockList_t &blocks, int sta
             // Copy the primitives to the `linesearch` MeshData object if linesearch was enabled.
             auto t_copy_linesearch = t_guess_ready;
             if (use_linesearch) {
-                t_copy_linesearch = tl.AddTask(t_guess_ready, Copy, std::vector<MetadataFlag>({Metadata::GetUserFlag("Primitive")}),
+                t_copy_linesearch = tl.AddTask(t_guess_ready, Copy<MeshData<Real>>, std::vector<MetadataFlag>({Metadata::GetUserFlag("Primitive")}),
                                                 md_solver.get(), md_linesearch.get());
             }
 
@@ -221,7 +212,7 @@ TaskCollection KHARMADriver::MakeImExTaskCollection(BlockList_t &blocks, int sta
 
             // Copy the entire solver state (everything defined on the grid, i.e. 'Cell') into the final state md_sub_step_final
             // If we're entirely explicit, we just declare these equal
-            t_implicit = tl.AddTask(t_implicit_step, Copy, std::vector<MetadataFlag>({Metadata::Cell}),
+            t_implicit = tl.AddTask(t_implicit_step, Copy<MeshData<Real>>, std::vector<MetadataFlag>({Metadata::Cell}),
                                     md_solver.get(), md_sub_step_final.get());
 
         }

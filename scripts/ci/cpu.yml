@@ -3,7 +3,7 @@
 image: quay.io/centos/centos:stream9
 
 variables:
-  OMP_NUM_THREADS: 8
+  OMP_NUM_THREADS: 4
   OMP_PROC_BIND: "false"
   MPI_EXE: mpirun
   MPI_NUM_PROCS: 2
@@ -13,10 +13,15 @@ variables:
 
 ### DEFAULT TEST BEHAVIOR ###
 default:
+  tags:
+    - public-kharma-runner
   # Be default: install pyharm, then run test in cwd
   # For new tests, write one run.sh script which runs/verifies
   # interleaved, and prints a summary of results.
   before_script:
+    - dnf -y install hostname environment-modules git mpich fftw wget
+    - source /etc/profile
+    - module load mpi/mpich-x86_64
     - export PATH="$HOME/.local/bin:$PATH"
     - wget -O Miniforge3.sh "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh"
     - bash Miniforge3.sh -b -p "/home/conda"
@@ -28,8 +33,7 @@ default:
     - pip install --user .
     - cd -
 
-# Tests can be executed in parallel,
-# but be careful about GPU arch
+# Tests can be executed in parallel
 stages:
   - build
   - tests
@@ -38,12 +42,14 @@ stages:
 build:
   stage: build
   variables:
-    NPROC: ""
-    HOST_ARCH: HSW
+    NPROC: 4
+    HOST_ARCH: NATIVE
   before_script:
-    - echo "Skipping pyharm install in build."
+    - dnf -y groupinstall "Development Tools"
+    - dnf -y install hostname environment-modules cmake mpich-devel fftw-devel
+    - source /etc/profile
+    - module load mpi/mpich-x86_64
   script:
-    - export PREFIX_PATH=$PWD/external/hdf5
     - ./make.sh clean hdf5
   artifacts:
     paths:

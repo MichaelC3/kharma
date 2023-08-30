@@ -1,5 +1,5 @@
 /* 
- *  File: debug.hpp
+ *  File: version.hpp
  *  
  *  BSD 3-Clause License
  *  
@@ -33,19 +33,14 @@
  */
 #pragma once
 
-#include "decs.hpp"
-#include "types.hpp"
+#include <string>
 
-// TODO TODO Namespace
-
-/**
- * Check the max signal speed (ctop) for 0-values or NaNs.
- * This is a final warning that something is very wrong and we should crash.
- */
-TaskStatus CheckNaN(MeshData<Real> *md, int dir, IndexDomain domain=IndexDomain::interior);
-
-/**
- * Check the primitive and conserved variables for negative values that definitely shouldn't be negative
- * That is: primitive rho, u, conserved rho*u^t
- */
-TaskStatus CheckNegative(MeshData<Real> *md, IndexDomain domain=IndexDomain::interior);
+namespace KHARMA
+{
+  struct Version
+  {
+    static const std::string GIT_SHA1;
+    static const std::string GIT_VERSION;
+    static const std::string GIT_REFSPEC;
+  };
+}

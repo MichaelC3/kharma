@@ -38,11 +38,13 @@
 #include <parthenon/parthenon.hpp>
 
 #include "decs.hpp"
+#include "version.hpp"
 
 // Packages
 #include "b_flux_ct.hpp"
 #include "b_cd.hpp"
 #include "b_cleanup.hpp"
+#include "b_ct.hpp"
 #include "current.hpp"
 #include "kharma_driver.hpp"
 #include "electrons.hpp"
@@ -86,6 +88,11 @@ std::shared_ptr<KHARMAPackage> KHARMA::InitializeGlobals(ParameterInput *pin, st
     // to be more general as it matures.
     std::string problem_name = pin->GetString("parthenon/job", "problem_id");
     params.Add("problem", problem_name);
+
+    // Finally, the code version.  Recorded so it gets passed to output files & for printing
+    params.Add("version", KHARMA::Version::GIT_VERSION);
+    params.Add("SHA1", KHARMA::Version::GIT_SHA1);
+    params.Add("branch", KHARMA::Version::GIT_REFSPEC);
 
     // Update the times with callbacks
     pkg->MeshPreStepUserWorkInLoop = KHARMA::MeshPreStepUserWorkInLoop;
@@ -294,19 +301,24 @@ Packages_t KHARMA::ProcessPackages(std::unique_ptr<ParameterInput> &pin)
     auto t_grmhd = tl.AddTask(t_globals | t_driver, KHARMA::AddPackage, packages, GRMHD::Initialize, pin.get());
     // Inverter (TODO: split out fixups, then don't load this when GRMHD isn't loaded)
     auto t_inverter = tl.AddTask(t_grmhd, KHARMA::AddPackage, packages, Inverter::Initialize, pin.get());
+    // Reductions, needed for most other packages
+    auto t_reductions = tl.AddTask(t_none, KHARMA::AddPackage, packages, Reductions::Initialize, pin.get());
 
     // B field solvers, to ensure divB ~= 0.
     // Bunch of logic here: basically we want to load <=1 solver with an encoded order of preference
     auto t_b_field = t_none;
     std::string b_field_solver = pin->GetOrAddString("b_field", "solver", "flux_ct");
-    if (b_field_solver == "none" || b_field_solver == "b_cleanup") {
+    if (b_field_solver == "none" || b_field_solver == "cleanup" || b_field_solver == "b_cleanup") {
         // Don't add a B field
-    } else if (b_field_solver == "constraint_damping" || b_field_solver == "b_cd") {
+    } else if (b_field_solver == "constrained_transport" || b_field_solver == "face_ct") {
+        t_b_field = tl.AddTask(t_grmhd, KHARMA::AddPackage, packages, B_CT::Initialize, pin.get());
+    } else if (b_field_solver == "constraint_damping" || b_field_solver == "cd") {
         // Constraint damping, probably only useful for non-GR MHD systems
         t_b_field = tl.AddTask(t_grmhd, KHARMA::AddPackage, packages, B_CD::Initialize, pin.get());
-    } else {
-        // Don't even error on bad values.  This is probably what you want
+    } else if (b_field_solver == "flux_ct") {
         t_b_field = tl.AddTask(t_grmhd, KHARMA::AddPackage, packages, B_FluxCT::Initialize, pin.get());
+    } else {
+        throw std::invalid_argument("Invalid solver! Must be e.g., flux_ct, face_ct, cd, cleanup...");
     }
     // Cleanup for the B field, using an elliptic solve for eliminating divB
     // Almost always loaded explicitly in addition to another transport, just for cleaning at simulation start
@@ -325,12 +337,8 @@ Packages_t KHARMA::ProcessPackages(std::unique_ptr<ParameterInput> &pin)
         if (t_b_field == t_none) t_b_field = t_b_cleanup;
     }
 
-    // Enable calculating jcon iff it is in any list of outputs (and there's even B to calculate it).
-    // Since it is never required to restart, this is the only time we'd write (hence, need) it
-    if (FieldIsOutput(pin.get(), "jcon") && t_b_field != t_none) {
-        auto t_current = tl.AddTask(t_b_field, KHARMA::AddPackage, packages, Current::Initialize, pin.get());
-    }
-    // Electrons are usually boring but not impossible without a B field (TODO add a test?)
+    // Optional standalone packages
+    // Electrons are boring but not impossible without a B field (TODO add a test?)
     if (pin->GetOrAddBoolean("electrons", "on", false)) {
         auto t_electrons = tl.AddTask(t_grmhd, KHARMA::AddPackage, packages, Electrons::Initialize, pin.get());
     }
@@ -340,22 +348,38 @@ Packages_t KHARMA::ProcessPackages(std::unique_ptr<ParameterInput> &pin)
     if (pin->GetOrAddBoolean("wind", "on", false)) {
         auto t_electrons = tl.AddTask(t_grmhd, KHARMA::AddPackage, packages, Wind::Initialize, pin.get());
     }
+    // Enable calculating jcon iff it is in any list of outputs (and there's even B to calculate it).
+    // Since it is never required to restart, this is the only time we'd write (hence, need) it
+    if (FieldIsOutput(pin.get(), "jcon") && t_b_field != t_none) {
+        auto t_current = tl.AddTask(t_b_field, KHARMA::AddPackage, packages, Current::Initialize, pin.get());
+    }
 
     // Execute the whole collection (just in case we do something fancy?)
     while (!tr.Execute()); // TODO this will inf-loop on error
 
+    // There are some packages which must be loaded after all physics
+    // Easier to load them separately than list dependencies
+
+    // Flux temporaries must be full size
+    KHARMA::AddPackage(packages, Flux::Initialize, pin.get());
+
+    // And any dirichlet/constant boundaries
+    // TODO avoid init if Parthenon will be handling all boundaries?
+    KHARMA::AddPackage(packages, KBoundaries::Initialize, pin.get());
+
     // Load the implicit package last, and only if there are any variables which need implicit evolution
-    int n_implicit = CountVars(packages.get(), Metadata::GetUserFlag("Implicit"));
+    auto all_implicit = Metadata::FlagCollection(Metadata::GetUserFlag("Implicit"));
+    int n_implicit = PackDimension(packages.get(), Metadata::GetUserFlag("Implicit"));
     if (n_implicit > 0) {
         KHARMA::AddPackage(packages, Implicit::Initialize, pin.get());
     }
 
-    // The boundaries package may need to know variable counts for allocating memory,
-    // so we initialize it after *everything* else
-    // TODO avoid init if e.g. all periodic boundaries?
-    KHARMA::AddPackage(packages, KBoundaries::Initialize, pin.get());
-
     // TODO print full package list as soon as we know it, up here
+
+#if DEBUG
+    // Carry the ParameterInput with us, for generating outputs whenever we want
+    packages->Get("Globals")->AllParams().Add("pin", pin.get());
+#endif
 
     EndFlag();
     return std::move(*packages);
