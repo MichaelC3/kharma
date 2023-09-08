@@ -282,7 +282,7 @@ void BG_Injection(MeshBlockData<Real> *rc)
 
     GRCoordinates G = pmb->coords;
 
-    IndexDomain domain = IndexDomain::interior;
+    IndexDomain domain = IndexDomain::entire;
     auto ib = rc->GetBoundsI(domain);
     auto jb = rc->GetBoundsJ(domain);
     auto kb = rc->GetBoundsK(domain);
@@ -304,5 +304,6 @@ void BG_Injection(MeshBlockData<Real> *rc)
             P(m_p.B1, k, j, i) += (exp(th*th*fac)-exp((M_PI-th)*(M_PI-th)*fac))*rate*dt*bchar/G.gdet(Loci::center, j, i);
             }  
         ); 
+    B_FluxCT::BlockPtoU(rc, IndexDomain::entire); 
 }
 
