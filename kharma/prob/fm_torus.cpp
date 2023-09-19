@@ -288,7 +288,7 @@ void BG_Injection(MeshBlockData<Real> *rc)
     auto kb = rc->GetBoundsK(domain);
 
     const Real rate = pmb->packages.Get("B_FluxCT")->Param<Real>("bg_rate");
-    const Real dt = pmb->packages.Get("Globals")->Param<Real>("dt_last");
+    const Real dt   = pmb->packages.Get("Globals")->Param<Real>("dt_last");
 
     pmb->par_for("magnetic_injection", kb.s, kb.e, jb.s, jb.e, ib.s, ib.e, 
         KOKKOS_LAMBDA (const int &k, const int &j, const int &i) {
