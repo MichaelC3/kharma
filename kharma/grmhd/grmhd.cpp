@@ -139,7 +139,7 @@ std::shared_ptr<KHARMAPackage> Initialize(ParameterInput *pin, std::shared_ptr<P
                                                   : Metadata::GetUserFlag("Explicit");
 
     std::vector<MetadataFlag> flags_prim = {Metadata::Real, Metadata::Cell, Metadata::Derived, areWeImplicit,
-                                            Metadata::Restart, Metadata::GetUserFlag("Primitive"),
+                                            Metadata::Restart, Metadata::GetUserFlag("Primitive"), 
                                             Metadata::GetUserFlag("HD"), Metadata::GetUserFlag("MHD")};
     std::vector<MetadataFlag> flags_cons = {Metadata::Real, Metadata::Cell, Metadata::Independent, areWeImplicit,
                                             Metadata::WithFluxes, Metadata::Conserved, Metadata::Conserved,
@@ -257,11 +257,7 @@ Real EstimateTimestep(MeshBlockData<Real> *rc)
         EndFlag();
         return globals.Get<double>("dt_light");
     }
-
     ParArray1D<Real> min_loc("min_loc", 3);
-
-    // TODO version preserving location, with switch to keep this fast one
-    // std::tuple doesn't work device-side, Kokkos::pair is 2D.  pair of pairs?
     Real min_ndt = 0.;
     pmb->par_reduce("ndt_min", kb.s, kb.e, jb.s, jb.e, ib.s, ib.e,
         KOKKOS_LAMBDA (const int k, const int j, const int i,
@@ -269,7 +265,6 @@ Real EstimateTimestep(MeshBlockData<Real> *rc)
             double ndt_zone = 1 / (1 / (G.Dxc<1>(i) /  m::max(cmax(0, k, j, i), cmin(0, k, j, i))) +
                                    1 / (G.Dxc<2>(j) /  m::max(cmax(1, k, j, i), cmin(1, k, j, i))) +
                                    1 / (G.Dxc<3>(k) /  m::max(cmax(2, k, j, i), cmin(2, k, j, i))));
-
             if (!m::isnan(ndt_zone) && (ndt_zone < local_result)) {
                 local_result = ndt_zone;
             }
@@ -278,7 +273,7 @@ Real EstimateTimestep(MeshBlockData<Real> *rc)
     // TODO(BSP) this would need work for non-rectangular grids.
     const double nctop = m::min(G.Dxc<1>(0), m::min(G.Dxc<2>(0), G.Dxc<3>(0))) / min_ndt;
 
-    // TODO print location
+        // TODO print location
     //std::cout << "New min timestep: " << min_ndt << std::endl;
 
     // Apply limits
