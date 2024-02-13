@@ -11,16 +11,16 @@ refinement = none
 numlevel = 1
 nx1 = 256
 nx2 = 128
-nx3 = 128
+nx3 = 256
 
 <parthenon/meshblock>
 nx1 = 128
 nx2 = 128
-nx3 = 64
+nx3 = 128
 
 <coordinates>
 base = spherical_ks
-transform = fmks
+transform = mks
 r_out = 1000
 a = 0.9375
 hslope = 0.3
@@ -32,8 +32,8 @@ poly_alpha = 14.0
 tlim = 10000.0
 
 <GRMHD>
-cfl = 0.7
-gamma = 1.666667
+cfl = 0.5
+gamma = 1.444444
 reconstruction = weno5
 
 <driver>
@@ -50,12 +50,15 @@ u_jitter = 0.1
 <b_field>
 type = mad
 beta_min = 100.
+do_BG = false
+bg_rate = 5.
+bg_start_t = 10000.
 
 <floors>
 rho_min_geom = 1e-6
 u_min_geom = 1e-8
 bsq_over_rho_max = 100
-u_over_rho_max = 2
+ktot_max = 3
 
 <debug>
 verbose = 1

@@ -92,6 +92,11 @@ std::shared_ptr<KHARMAPackage> Initialize(ParameterInput *pin, std::shared_ptr<P
     bool implicit_b = pin->GetOrAddBoolean("b_field", "implicit", false);
     params.Add("implicit", implicit_b);
 
+
+   // B-G Model 
+    bool do_BG = pin->GetOrAddBoolean("b_field", "do_BG", false);
+    params.Add("do_BG", do_BG);
+
     // FIELDS
     // Vector size: 3x[grid shape]
     std::vector<int> s_vector({NVEC});

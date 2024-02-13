@@ -65,6 +65,18 @@ TaskStatus InitializeFMTorus(std::shared_ptr<MeshBlockData<Real>>& rc, Parameter
     const auto& G = pmb->coords;
     const GReal a = G.coords.get_a();
 
+    // Blandford-Globus injection
+    // B-G Model 
+    const bool do_BG = pmb->packages.Get("B_FluxCT")->Param<bool>("do_BG");
+    if (do_BG) {
+        GReal bg_rate = pin->GetOrAddReal("b_field", "bg_rate", 5.0);
+	    GReal bg_start_t = pin->GetOrAddReal("b_field", "bg_start_t", 2500.0 );
+        pmb->packages.Get("B_FluxCT")->AllParams().Add("bg_rate", bg_rate);
+	    pmb->packages.Get("B_FluxCT")->AllParams().Add("bg_start_t", bg_start_t);
+        auto bpkg = pmb->packages.Get<KHARMAPackage>("B_FluxCT");
+        bpkg->BlockApplyPrimSource = BG_Injection;
+    }
+
     // Fishbone-Moncrief parameters
     Real l = lfish_calc(a, rmax);
 
@@ -194,4 +206,42 @@ TaskStatus InitializeFMTorus(std::shared_ptr<MeshBlockData<Real>>& rc, Parameter
     Floors::ApplyInitialFloors(pin, rc.get(), IndexDomain::interior);
 
     return TaskStatus::complete;
+}
+void BG_Injection(MeshBlockData<Real> *rc) 
+{
+    auto pmb = rc->GetBlockPointer();
+
+    PackIndexMap prims_map;
+    auto P = GRMHD::PackMHDPrims(rc, prims_map);
+    const VarMap m_p(prims_map, false);
+
+    GRCoordinates G = pmb->coords;
+
+    IndexDomain domain = IndexDomain::entire;
+    auto ib = rc->GetBoundsI(domain);
+    auto jb = rc->GetBoundsJ(domain);
+    auto kb = rc->GetBoundsK(domain);
+
+    const GReal rate = pmb->packages.Get("B_FluxCT")->Param<Real>("bg_rate");
+    const GReal start_time = pmb->packages.Get("B_FluxCT")->Param<Real>("bg_start_t");
+    const GReal dt = pmb->packages.Get("Globals")->Param<Real>("dt_last");
+    const GReal cthwid = .1; /* how wide a cone is the field addition region */
+    const GReal bchar = 1.; /* characteristic field strength */
+    const GReal fac = -2.76/(cthwid*cthwid); /*conversion from FWHM to 1/(2 stdev^2)*/
+    const GReal t = pmb->packages.Get("Globals")->Param<Real>("time");
+    
+
+    if (t > start_time) {
+        pmb->par_for("magnetic_injection", kb.s, kb.e, jb.s, jb.e, ib.s, ib.e, 
+            KOKKOS_LAMBDA (const int &k, const int &j, const int &i) {
+                GReal Xnative[GR_DIM], Xembed[GR_DIM];
+                G.coord(k, j, i, Loci::center, Xnative);
+                G.coord_embed(k, j, i, Loci::center, Xembed);
+                GReal r = Xembed[1];
+                GReal th = Xembed[2];
+                P(m_p.B1, k, j, i) += (exp(th*th*fac)-exp((M_PI-th)*(M_PI-th)*fac))*rate*dt*bchar/G.gdet(Loci::center, j, i);
+            }  
+        ); 
+        B_FluxCT::BlockPtoU(rc, IndexDomain::entire); 
+    }
 }
