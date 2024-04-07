@@ -29,7 +29,7 @@ poly_xt = 0.82
 poly_alpha = 14.0
 
 <parthenon/time>
-tlim = 3000.0
+tlim = 100.0
 
 <GRMHD>
 cfl = 0.5
@@ -41,7 +41,6 @@ type = imex
 two_sync = true
 
 <torus>
-rin = 20.0
 rmax = 41.0
 
 <perturbation>

@@ -22,8 +22,8 @@ then
   then
     # GPU Compile
     # 4-device MPI
-    MPI_EXTRA_ARGS="--map-by ppr:4:node:pe=16"
-    MPI_NUM_PROCS=4
+    MPI_EXTRA_ARGS="--map-by ppr:1:node:pe=16"
+    MPI_NUM_PROCS=1
 
     # Device-side buffers are broken on some Nvidia machines
     EXTRA_FLAGS="-DPARTHENON_ENABLE_HOST_COMM_BUFFERS=ON $EXTRA_FLAGS"
