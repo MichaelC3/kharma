@@ -96,7 +96,7 @@ GRCoordinates::GRCoordinates(const GRCoordinates &src, int coarsen): UniformCart
 void init_GRCoordinates(GRCoordinates& G) {
     const int n1 = G.n1;
     const int n2 = G.n2;
-    const int n3 = G.n3;
+    //const int n3 = G.n3;
     const bool correct_connections = G.correct_connections;
     const int connection_average_points = G.connection_average_points;
 
@@ -145,7 +145,7 @@ void init_GRCoordinates(GRCoordinates& G) {
                             // Get geometry at points
                             GReal gcov_loc[GR_DIM][GR_DIM], gcon_loc[GR_DIM][GR_DIM];
                             G.coords.gcov_native(X, gcov_loc);
-                            const GReal gdet = G.coords.gcon_native(gcov_loc, gcon_loc);
+                            const GReal gdet = G.coords.gcon_from_gcov(gcov_loc, gcon_loc);
                             // Add to running averages
                             gdet_local(loc, j, i) += gdet / square;
                             DLOOP2 {
@@ -177,7 +177,7 @@ void init_GRCoordinates(GRCoordinates& G) {
                         // Get geometry at the point
                         GReal gcov_loc[GR_DIM][GR_DIM], gcon_loc[GR_DIM][GR_DIM];
                         G.coords.gcov_native(X, gcov_loc);
-                        const GReal gdet = G.coords.gcon_native(gcov_loc, gcon_loc);
+                        const GReal gdet = G.coords.gcon_from_gcov(gcov_loc, gcon_loc);
                         // Add to running averages
                         gdet_local(loc, j, i) += gdet / diameter;
                         DLOOP2 {
@@ -192,7 +192,7 @@ void init_GRCoordinates(GRCoordinates& G) {
                     // Get geometry
                     GReal gcov_loc[GR_DIM][GR_DIM], gcon_loc[GR_DIM][GR_DIM];
                     G.coords.gcov_native(X, gcov_loc);
-                    const GReal gdet = G.coords.gcon_native(gcov_loc, gcon_loc);
+                    const GReal gdet = G.coords.gcon_from_gcov(gcov_loc, gcon_loc);
                     // Set geometry
                     gdet_local(loc, j, i) = gdet;
                     DLOOP2 {

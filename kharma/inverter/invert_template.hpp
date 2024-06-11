@@ -41,14 +41,15 @@
 #include "decs.hpp"
 #include "types.hpp"
 
+#include "floors.hpp"
+
 namespace Inverter {
 
 // Denote inverter types. Currently just one
-enum class Type{none=0, onedw};
+enum class Type{none=0, onedw, kastaun};
 
 // Denote inversion failures (pflags)
 // This enum should grow to cover any inversion algorithm
-// TODO is this better off in its own space like FFlag?
 enum class Status{success=0, neg_input, max_iter, bad_ut, bad_gamma, neg_rho, neg_u, neg_rhou};
 
 static const std::map<int, std::string> status_names = {
@@ -68,6 +69,13 @@ KOKKOS_INLINE_FUNCTION bool failed(T status_flag)
     return static_cast<int>(status_flag) > static_cast<int>(Status::success);
 }
 
+template <typename T>
+KOKKOS_INLINE_FUNCTION bool valid(T status_flag)
+{
+    // Return only values >0, among the failure flags
+    return static_cast<int>(status_flag) == static_cast<int>(Status::success);
+}
+
 /**
  * Recover local primitive variables, with a one-dimensional Newton-Raphson iterative solver.
  * Iteration starts from the current primitive values, and otherwse may *fail to converge*
@@ -83,8 +91,9 @@ KOKKOS_INLINE_FUNCTION bool failed(T status_flag)
  * BEFORE you instantiate the template.
  */
 template<Type inverter>
-KOKKOS_INLINE_FUNCTION Status u_to_p(const GRCoordinates &G, const VariablePack<Real>& U, const VarMap& m_u,
+KOKKOS_INLINE_FUNCTION int u_to_p(const GRCoordinates& G, const VariablePack<Real>& U, const VarMap& m_u,
                                               const Real& gam, const int& k, const int& j, const int& i,
                                               const VariablePack<Real>& P, const VarMap& m_p,
-                                              const Loci loc);
+                                              const Loci& loc, const Floors::Prescription& floors,
+                                              const int& max_iterations, const Real& tol);
 } // namespace Inverter

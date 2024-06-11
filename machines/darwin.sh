@@ -5,11 +5,14 @@
 
 if [[ ($HOSTNAME == "cn"* || $HOSTNAME == "darwin"*) &&
       ("$PWD" == "/projects/jacamar-ci"* || "$PWD" == "/vast"*) ]]; then
-  module purge
+  #module purge
   module load cmake
 
   # Where we're going, we don't need system libraries
   ARGS="$ARGS hdf5"
+  if [[ "$ARGS" == *"clean"* ]]; then
+    ARGS="$ARGS cleanhdf5"
+  fi
 
   # 1. Load compiler stack
   if [[ "$ARGS" == *"gcc10"* ]]; then
@@ -18,7 +21,7 @@ if [[ ($HOSTNAME == "cn"* || $HOSTNAME == "darwin"*) &&
     CXX_NATIVE=g++
   elif [[ "$ARGS" == *"gcc"* ]]; then
     # Default GCC
-    module load gcc/12.1.0
+    module load gcc/12.1.0 openmpi/4.1.5-gcc_12.2.0
     C_NATIVE=gcc
     CXX_NATIVE=g++
   elif [[ "$ARGS" == *"aocc"* ]]; then
@@ -29,9 +32,6 @@ if [[ ($HOSTNAME == "cn"* || $HOSTNAME == "darwin"*) &&
     module load nvhpc
     C_NATIVE="nvc"
     CXX_NATIVE="nvc++"
-    # New NVHPC doesn't like CUDA_HOME
-    export NVHPC_CUDA_HOME="$CUDA_HOME"
-    unset CUDA_HOME
   elif [[ "$ARGS" == *"icc"* ]]; then
     module load intel-classic/2021.3.0
     C_NATIVE=icc
@@ -42,9 +42,6 @@ if [[ ($HOSTNAME == "cn"* || $HOSTNAME == "darwin"*) &&
       module load nvhpc
       C_NATIVE="nvc"
       CXX_NATIVE="nvc++"
-      # New NVHPC doesn't like CUDA_HOME
-      export NVHPC_CUDA_HOME="$CUDA_HOME"
-      unset CUDA_HOME
     else
       module load intel
       C_NATIVE=icx
@@ -54,18 +51,21 @@ if [[ ($HOSTNAME == "cn"* || $HOSTNAME == "darwin"*) &&
 
   # 2. Load accelerator libraries
   if [[ "$ARGS" == *"cuda"* ]]; then
-    module load cuda/12.0.0 nvhpc
-    PREFIX_PATH=$NVHPC_ROOT
-    EXTRA_FLAGS="-DPARTHENON_ENABLE_HOST_COMM_BUFFERS=ON $EXTRA_FLAGS"
+    module load cuda/12.3.1
+    # Newer NVHPC wants us to leave it alone
+    #unset CUDA_HOME
+    # For manually exporting CUDA and COMM_LIBS
+    #export NVHPC_CUDA_HOME="$CUDA_HOME"
+    #export NVHPC_COMM_LIBS_HOME=/projects/darwin-nv/rhel8/aarch64/packages/nvhpc/Linux_aarch64/24.1/comm_libs
+    #PREFIX_PATH=$NVHPC_ROOT
+    #EXTRA_FLAGS="-DPARTHENON_ENABLE_HOST_COMM_BUFFERS=ON $EXTRA_FLAGS"
   elif [[ "$ARGS" == *"hip"* ]]; then
-    module load rocm/5.4.3 #openmpi/5.0.0rc11-gcc_13.1.0
-    source ~/libs/env.sh
+    # No MPI or OpenMP -- No OFI OpenMPI on Darwin (right?) and HIP hates OpenMP
+    module load rocm
     C_NATIVE=hipcc
     CXX_NATIVE=hipcc
-    export CXXFLAGS="-fopenmp $CXXFLAGS"
-  else
-    # load OpenMPI for CPU builds...
-    module load openmpi
+    # Disable MPI
+    ARGS="$ARGS nompi"
   fi
 
   # ... or if we force it (CI)

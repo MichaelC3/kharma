@@ -71,8 +71,19 @@ constexpr TE E3 = TE::E3;
 constexpr TE NN = TE::NN;
 
 // Any basic type manips, see LocOf in decs etc etc
-KOKKOS_INLINE_FUNCTION TopologicalElement FaceOf(const int& dir) {
-    return (dir == 1) ? F1 : (dir == 2) ? F2 : F3;
+// Host-only because the templating/types are weird on device
+template<typename T>
+inline TE FaceOf(const T& dir) {
+    return (dir == X1DIR) ? F1 : ((dir == X2DIR) ? F2 : F3);
+}
+template<typename T>
+inline TE EdgeOf(const T& dir) {
+    return (dir == X1DIR) ? E1 : ((dir == X2DIR) ? E2 : E3);
+}
+template<typename T>
+inline std::vector<TE> OrthogonalEdges(const T& dir) {
+    return (dir == X1DIR) ? std::vector<TE>{E2, E3} :
+        ((dir == X2DIR) ? std::vector<TE>{E1, E3} : std::vector<TE>{E1, E2});
 }
 
 // Struct for derived 4-vectors at a point, usually calculated and needed together
@@ -84,12 +95,12 @@ typedef struct {
 } FourVectors;
 
 typedef struct {
-    uint is;
-    uint ie;
-    uint js;
-    uint je;
-    uint ks;
-    uint ke;
+    int is;
+    int ie;
+    int js;
+    int je;
+    int ks;
+    int ke;
 } IndexRange3;
 
 typedef struct {

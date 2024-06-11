@@ -51,7 +51,6 @@
 #include "resize_restart.hpp"
 #include "resize_restart_kharma.hpp"
 #include "kelvin_helmholtz.hpp"
-#include "bz_monopole.hpp"
 #include "mhdmodes.hpp"
 #include "orszag_tang.hpp"
 #include "shock_tube.hpp"
@@ -65,7 +64,6 @@
 #include "elec/driven_turbulence.hpp"
 #include "elec/hubble.hpp"
 #include "elec/noh.hpp"
-
 
 using namespace parthenon;
 
@@ -84,7 +82,6 @@ void KHARMA::ProblemGenerator(MeshBlock *pmb, ParameterInput *pin)
 
     // Breakout to call the appropriate initialization function,
     // defined in accompanying headers.
-
     TaskStatus status = TaskStatus::fail;
     // MHD
     if (prob == "mhdmodes") {
@@ -136,7 +133,7 @@ void KHARMA::ProblemGenerator(MeshBlock *pmb, ParameterInput *pin)
     }
 
     // If we're not restarting, do any grooming of the initial conditions
-    if ((prob != "resize_restart") && (prob != "resize_restart_kharma")) { //Hyerin
+    if ((prob != "resize_restart")) {
         // Perturb the internal energy a bit to encourage accretion
         // Note this defaults to zero & is basically turned on only for torii
         if (pin->GetOrAddReal("perturbation", "u_jitter", 0.0) > 0.0) {

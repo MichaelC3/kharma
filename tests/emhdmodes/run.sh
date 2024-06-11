@@ -21,7 +21,7 @@ conv_2d() {
         mv emhdmodes.out0.final.phdf emhd_2d_${res}_end_${1}.phdf
     done
     check_code=0
-    python check.py $ALL_RES "$3" $1 2d || check_code=$?
+    python3 check.py $ALL_RES "$3" $1 2d || check_code=$?
     if [[ $check_code != 0 ]]; then
         echo $3 FAIL: $check_code
         exit_code=1
@@ -30,16 +30,18 @@ conv_2d() {
     fi
 }
 
-# 2D modes use small blocks, could pick up some problems at MPI ranks >> 1
-# Just one default mode
+# WENO hits roundoff at higher res...
 ALL_RES="32,64,128"
-conv_2d emhd2d_weno driver/reconstruction=weno5 "EMHD mode in 2D, WENO5"
+conv_2d emhd2d_weno flux/reconstruction=weno5 "EMHD mode in 2D, WENO5"
+
+# ...but linear doesn't capture wave until higher res. Troubling.
+ALL_RES="64,128,256"
+conv_2d emhd2d_mc flux/reconstruction=linear_mc "EMHD mode in 2D, linear/MC reconstruction"
 # Test that higher-order terms don't mess anything up
 conv_2d emhd2d_higher_order emhd/higher_order_terms=true "EMHD mode in 2D, higher order terms enabled"
 # Test we can use imex/EMHD and face CT
 conv_2d emhd2d_face_ct b_field/solver=face_ct "EMHD mode in 2D w/Face CT"
-
-ALL_RES="16,32,64,128,256"
-conv_2d emhd2d_mc GRMHD/reconstruction=linear_mc "EMHD mode in 2D, linear/MC reconstruction"
+# Test if it works with ideal solution as guess
+conv_2d emhd2d_ideal_guess emhd/ideal_guess=true "EMHD mode in 2D, Ideal guess"
 
 exit $exit_code

@@ -38,13 +38,15 @@
 
 using namespace parthenon;
 
+// THIS MODULE DOESN'T WORK with KHARMA's initialization or modern structure
+// The code is here so that we can ensure it keeps compiling,
+// which should make it easier to reintroduce if we want to later
+
 namespace B_CD
 {
 
 std::shared_ptr<KHARMAPackage> Initialize(ParameterInput *pin, std::shared_ptr<Packages_t>& packages)
 {
-    throw std::runtime_error("Constraint-damping transport is not functional with modern B field initialization!");
-
     auto pkg = std::make_shared<KHARMAPackage>("B_CD");
     Params &params = pkg->AllParams();
 
@@ -99,7 +101,12 @@ std::shared_ptr<KHARMAPackage> Initialize(ParameterInput *pin, std::shared_ptr<P
     // add callbacks for HST output to the Params struct, identified by the `hist_param_key`
     pkg->AddParam<>(parthenon::hist_param_key, hst_vars);
 
-    return pkg;
+    // Throw down here, like this, to avoid inaccessible code warnings
+    if (1) {
+        throw std::runtime_error("Constraint-damping transport is not functional with modern B field initialization!");
+    } else {
+        return pkg;
+    }
 }
 
 void BlockUtoP(MeshBlockData<Real> *rc, IndexDomain domain, bool coarse)
@@ -128,7 +135,7 @@ void BlockUtoP(MeshBlockData<Real> *rc, IndexDomain domain, bool coarse)
     );
 }
 
-TaskStatus AddSource(MeshData<Real> *md, MeshData<Real> *mdudt)
+TaskStatus AddSource(MeshData<Real> *md, MeshData<Real> *mdudt, IndexDomain domain)
 {
     auto pmesh = md->GetMeshPointer();
     auto pmb0 = md->GetBlockData(0)->GetBlockPointer();
@@ -146,9 +153,9 @@ TaskStatus AddSource(MeshData<Real> *md, MeshData<Real> *mdudt)
     // TODO add source terms to everything else here:
     // U1, U2, U3 get -(del*B) B
     // U gets -B*(grad psi)
-    const IndexRange ib = md->GetBoundsI(IndexDomain::interior);
-    const IndexRange jb = md->GetBoundsJ(IndexDomain::interior);
-    const IndexRange kb = md->GetBoundsK(IndexDomain::interior);
+    const IndexRange ib = md->GetBoundsI(domain);
+    const IndexRange jb = md->GetBoundsJ(domain);
+    const IndexRange kb = md->GetBoundsK(domain);
     const IndexRange block = IndexRange{0, B_U.GetDim(5)-1};
 
     pmb0->par_for("AddSource_B_CD", block.s, block.e, kb.s, kb.e, jb.s, jb.e, ib.s, ib.e,
