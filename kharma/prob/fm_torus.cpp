@@ -65,6 +65,7 @@ TaskStatus InitializeFMTorus(std::shared_ptr<MeshBlockData<Real>>& rc, Parameter
     const auto& G = pmb->coords;
     const GReal a = G.coords.get_a();
 
+<<<<<<< Updated upstream
     // Blandford-Globus injection
     // B-G Model 
     const bool do_BG = pmb->packages.Get("B_FluxCT")->Param<bool>("do_BG");
@@ -76,6 +77,8 @@ TaskStatus InitializeFMTorus(std::shared_ptr<MeshBlockData<Real>>& rc, Parameter
     auto bpkg = pmb->packages.Get<KHARMAPackage>("B_FluxCT");
     bpkg->BlockApplyPrimSource = BG_Injection;
 
+=======
+>>>>>>> Stashed changes
     // Fishbone-Moncrief parameters
     Real l = lfish_calc(a, rmax);
 
@@ -205,6 +208,7 @@ TaskStatus InitializeFMTorus(std::shared_ptr<MeshBlockData<Real>>& rc, Parameter
     Floors::ApplyInitialFloors(pin, rc.get(), IndexDomain::interior);
 
     return TaskStatus::complete;
+<<<<<<< Updated upstream
 }
 void BG_Injection(MeshBlockData<Real> *rc) 
 {
@@ -244,3 +248,6 @@ void BG_Injection(MeshBlockData<Real> *rc)
         B_FluxCT::BlockPtoU(rc, IndexDomain::entire); 
     }
 }
+=======
+}
+>>>>>>> Stashed changes

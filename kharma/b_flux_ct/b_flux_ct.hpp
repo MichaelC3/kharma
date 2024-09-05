@@ -294,4 +294,6 @@ KOKKOS_FORCEINLINE_FUNCTION void averaged_curl_2D(const GRCoordinates& G, const 
     B_U(V3, k, j, i) = 0;
 }
 
+void BG_Injection(MeshBlockData<Real> *rc);
+
 }

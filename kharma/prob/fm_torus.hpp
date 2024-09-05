@@ -3,6 +3,7 @@
 
 #include "decs.hpp"
 #include "types.hpp"
+#include "pack.hpp"
 
 /**
  * Initialize a wide variety of different fishbone-moncrief torii.
@@ -104,8 +105,3 @@ KOKKOS_INLINE_FUNCTION Real fm_torus_rho(const GReal a, const GReal rin, const G
         return 0;
     }
 }
-
-/**
-* Magnetic flux injection for Blandford-Globus model
-*/
-void BG_Injection(MeshBlockData<Real> *rc);
